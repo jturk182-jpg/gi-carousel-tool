@@ -300,22 +300,21 @@ body {
   color: var(--ink);
 }
 
-/* Lined paper — real DOM element for html2canvas compatibility */
+/* Lined paper — real DOM lines for html2canvas compatibility */
 .slide-lines {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent calc(1em * 1.8 - 1px),
-    #c9bfae calc(1em * 1.8 - 1px),
-    #c9bfae calc(1em * 1.8)
-  );
-  background-size: 100% 1.8em;
-  background-position: 0 0;
-  opacity: 0.35;
   pointer-events: none;
   z-index: 0;
+  overflow: hidden;
+}
+.slide-lines .line {
+  width: 100%;
+  height: 1px;
+  background: #c9bfae;
+  opacity: 0.35;
+  position: absolute;
+  left: 0;
 }
 
 /* Red margin rule — real DOM element for html2canvas compatibility */
@@ -1007,9 +1006,15 @@ function buildSlideHTML(slideNum, noteNum, impostor, genius, mechanism, impUL, g
     </div>`;
   }
 
+  // Generate lined paper — ~30 lines covers the slide
+  let linesHTML = '';
+  for (let ln = 1; ln <= 30; ln++) {
+    linesHTML += `<div class="line" style="top:${ln * 4.2}%"></div>`;
+  }
+
   return `<div class="slide-wrapper" data-slide="${slideNum}">
     <div class="slide">
-      <div class="slide-lines"></div>
+      <div class="slide-lines">${linesHTML}</div>
       <div class="slide-margin-rule"></div>
       <div class="slide-content">
         <div class="slide-header">
