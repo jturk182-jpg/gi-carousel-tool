@@ -6,6 +6,7 @@
 <title>G&I Carousel Tool</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1104,20 +1105,21 @@ async function exportAll() {
 
   renderContainer.innerHTML = '';
 
-  // Download all with staggered timing to avoid browser blocking
-  for (let j = 0; j < blobs.length; j++) {
-    const { blob, filename } = blobs[j];
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = url;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    // Stagger downloads so browser doesn't swallow them
-    await new Promise(r => setTimeout(r, 500));
-    URL.revokeObjectURL(url);
+  // Package into zip
+  statusEl.innerHTML = '<span class="spinner"></span> Packaging zip...';
+  const zip = new JSZip();
+  for (const { blob, filename } of blobs) {
+    zip.file(filename, blob);
   }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(zipBlob);
+  const link = document.createElement('a');
+  link.download = `field-note-${String(s.noteNum).padStart(2, '0')}.zip`;
+  link.href = url;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 
   statusEl.textContent = `${blobs.length} slides exported.`;
   statusEl.className = 'status-msg';
