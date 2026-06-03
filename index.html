@@ -1056,26 +1056,28 @@ async function exportAll() {
   statusEl.innerHTML = '<span class="spinner"></span> Rendering...';
 
   const s = getEditorState();
-
   const renderContainer = document.getElementById('exportRender');
   const slideNames = ['hook', 'reveal', 'mechanism', 'cta'];
+  const blobs = [];
+
+  // Wait for fonts first
+  await document.fonts.ready;
 
   for (let i = 0; i < 4; i++) {
+    statusEl.innerHTML = `<span class="spinner"></span> Rendering slide ${i + 1} of 4...`;
+
     renderContainer.innerHTML = buildSlideHTML(i, s.noteNum, s.impostor, s.genius, s.mechanism, s.impUL, s.genUL, s.ctaStamp, s.ctaLine1, s.ctaLine2);
 
-    // Set export dimensions
     const wrapper = renderContainer.querySelector('.slide-wrapper');
-    wrapper.style.width = '1080px';
-    wrapper.style.height = '1350px';
-    wrapper.style.borderRadius = '0';
+    // Override aspect-ratio and set fixed dimensions
+    wrapper.style.cssText = 'width:1080px;height:1350px;aspect-ratio:auto;border-radius:0;overflow:hidden;position:relative;box-shadow:none;cursor:default;';
 
-    // Set font sizes for export (scale up from preview)
     const slide = wrapper.querySelector('.slide');
-    slide.style.fontSize = '24px';
+    // Base font for 1080px wide. Preview is ~250px, so scale ~4.3x from default
+    slide.style.fontSize = '48px';
 
-    // Wait for fonts
-    await document.fonts.ready;
-    await new Promise(r => setTimeout(r, 100));
+    // Let layout settle
+    await new Promise(r => setTimeout(r, 200));
 
     try {
       const canvas = await html2canvas(wrapper, {
@@ -1084,17 +1086,16 @@ async function exportAll() {
         scale: 1,
         useCORS: true,
         backgroundColor: '#f1ebde',
-        logging: false
+        logging: false,
+        allowTaint: true
       });
 
-      const link = document.createElement('a');
-      link.download = `field-note-${String(s.noteNum).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}-${slideNames[i]}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-
-      await new Promise(r => setTimeout(r, 300));
+      // Convert to blob and store
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      const filename = `field-note-${String(s.noteNum).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}-${slideNames[i]}.png`;
+      blobs.push({ blob, filename });
     } catch (e) {
-      statusEl.textContent = 'Export error: ' + e.message;
+      statusEl.textContent = 'Export error on slide ' + (i + 1) + ': ' + e.message;
       statusEl.className = 'status-msg error';
       renderContainer.innerHTML = '';
       return;
@@ -1102,7 +1103,23 @@ async function exportAll() {
   }
 
   renderContainer.innerHTML = '';
-  statusEl.textContent = '4 slides exported.';
+
+  // Download all with staggered timing to avoid browser blocking
+  for (let j = 0; j < blobs.length; j++) {
+    const { blob, filename } = blobs[j];
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Stagger downloads so browser doesn't swallow them
+    await new Promise(r => setTimeout(r, 500));
+    URL.revokeObjectURL(url);
+  }
+
+  statusEl.textContent = `${blobs.length} slides exported.`;
   statusEl.className = 'status-msg';
 }
 
