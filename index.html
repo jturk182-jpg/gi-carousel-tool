@@ -300,9 +300,8 @@ body {
   color: var(--ink);
 }
 
-/* Lined paper */
-.slide::before {
-  content: '';
+/* Lined paper — real DOM element for html2canvas compatibility */
+.slide-lines {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   background: repeating-linear-gradient(
@@ -319,9 +318,8 @@ body {
   z-index: 0;
 }
 
-/* Red margin rule */
-.slide::after {
-  content: '';
+/* Red margin rule — real DOM element for html2canvas compatibility */
+.slide-margin-rule {
   position: absolute;
   top: 0; bottom: 0;
   left: 10%;
@@ -391,10 +389,8 @@ body {
   color: var(--ink);
 }
 .statement-text .underline-word {
-  text-decoration: underline;
-  text-decoration-color: var(--accent);
-  text-underline-offset: 4px;
-  text-decoration-thickness: 2px;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 2px;
 }
 
 .mechanism-text {
@@ -1013,6 +1009,8 @@ function buildSlideHTML(slideNum, noteNum, impostor, genius, mechanism, impUL, g
 
   return `<div class="slide-wrapper" data-slide="${slideNum}">
     <div class="slide">
+      <div class="slide-lines"></div>
+      <div class="slide-margin-rule"></div>
       <div class="slide-content">
         <div class="slide-header">
           <div class="field-note-label">Field Note No. ${String(noteNum).padStart(2, '0')}</div>
