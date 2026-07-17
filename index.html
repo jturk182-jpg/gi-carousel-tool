@@ -59,6 +59,11 @@ body {
   flex-shrink: 0;
 }
 
+.tool-switch { display: flex; gap: 4px; padding: 12px 20px 0; flex-wrap: wrap; flex-shrink: 0; }
+.tool-switch a, .tool-switch span { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); background: var(--bg-input); }
+.tool-switch a:hover { border-color: var(--accent); color: var(--accent); }
+.tool-switch .active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 /* Accordion */
 .accordion-section { border-bottom: 1px solid var(--border); }
 .accordion-header {
@@ -494,6 +499,7 @@ body {
   <!-- LEFT PANEL -->
   <div class="left-panel">
     <div class="panel-header">G&I Carousel Tool</div>
+    <div class="tool-switch"><a href="https://quote-carousel-tool.netlify.app/">Quote</a><a href="https://boisterous-madeleine-04547d.netlify.app/">Study</a><a href="https://chimerical-marshmallow-872f9c.netlify.app/">Carousel</a><span class="active">G/I</span></div>
 
     <!-- Statement Bank -->
     <div class="accordion-section">
