@@ -528,6 +528,16 @@ body {
     <div class="panel-header">G&I Carousel Tool</div>
     <div class="tool-switch"><a href="https://quote-carousel-tool.netlify.app/">Quote</a><a href="https://boisterous-madeleine-04547d.netlify.app/">Study</a><a href="https://chimerical-marshmallow-872f9c.netlify.app/">Carousel</a><span class="active">G/I</span><a href="https://found-clip-carousel.netlify.app/">Found</a></div>
 
+    <!-- Saved Notes -->
+    <div class="accordion-section">
+      <div class="accordion-header" id="savedHeader" onclick="toggleAccordion(this)">
+        <span>Saved Notes</span><span class="arrow">&#9654;</span>
+      </div>
+      <div class="accordion-body">
+        <div class="pair-list" id="savedList"></div>
+      </div>
+    </div>
+
     <!-- Statement Bank -->
     <div class="accordion-section">
       <div class="accordion-header active" onclick="toggleAccordion(this)">
@@ -628,6 +638,7 @@ body {
     <!-- Export Bar -->
     <div class="export-bar">
       <button class="btn btn-primary" onclick="exportAll()">Download All PNGs</button>
+      <button class="btn btn-secondary" onclick="saveNote()">Save Note</button>
       <button class="btn btn-secondary" onclick="copyJSON()">Copy JSON</button>
       <span id="exportStatus" class="status-msg" style="align-self:center;margin-left:8px;"></span>
     </div>
@@ -1250,10 +1261,93 @@ function copyJSON() {
 }
 
 // ============================================================
+// SAVED NOTES (full editor state, persisted in the browser)
+// ============================================================
+const SAVED_KEY = 'gi_saved_notes';
+function loadSavedNotes() {
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch (e) { return []; }
+}
+function persistSavedNotes(notes) {
+  try { localStorage.setItem(SAVED_KEY, JSON.stringify(notes)); } catch (e) {}
+}
+let SAVED = loadSavedNotes();
+
+function setExportStatus(msg, isError) {
+  const el = document.getElementById('exportStatus');
+  el.textContent = msg;
+  el.className = 'status-msg' + (isError ? ' error' : '');
+}
+
+function saveNote() {
+  const s = getEditorState();
+  if (!s.impostor && !s.genius && !s.mechanism) {
+    setExportStatus('Nothing to save yet — build a note first.', true);
+    return;
+  }
+  SAVED.push(s);
+  persistSavedNotes(SAVED);
+  buildSavedList();
+  openSavedNotes();
+  setExportStatus('Note saved.');
+}
+
+function buildSavedList() {
+  const c = document.getElementById('savedList');
+  c.innerHTML = '';
+  if (SAVED.length === 0) {
+    c.innerHTML = '<div class="status-msg">No saved notes yet. Build one, then hit Save Note.</div>';
+    return;
+  }
+  SAVED.forEach((n, idx) => {
+    const div = document.createElement('div');
+    div.className = 'pair-item';
+    const label = (n.impostor || n.genius || ('Field Note ' + n.noteNum)).slice(0, 64);
+    div.innerHTML = `<span class="pair-del" title="Delete">&times;</span>` +
+      `<span class="imp">No. ${String(n.noteNum).padStart(2, '0')}</span><br>` +
+      `<span class="gen">${esc(label)}</span>`;
+    div.onclick = () => loadNote(idx);
+    div.querySelector('.pair-del').onclick = (e) => { e.stopPropagation(); deleteNote(idx); };
+    c.appendChild(div);
+  });
+}
+
+function loadNote(idx) {
+  const n = SAVED[idx];
+  if (!n) return;
+  document.getElementById('edFieldNote').value = n.noteNum;
+  document.getElementById('edImpostor').value = n.impostor || '';
+  document.getElementById('edGenius').value = n.genius || '';
+  document.getElementById('edMechanism').value = n.mechanism || '';
+  document.getElementById('edImpUnderline').value = n.impUL || '';
+  document.getElementById('edGenUnderline').value = n.genUL || '';
+  document.getElementById('edCtaStamp').value = n.ctaStamp || '';
+  document.getElementById('edCtaLine1').value = n.ctaLine1 || '';
+  document.getElementById('edCtaLine2').value = n.ctaLine2 || '';
+  updatePreview();
+}
+
+function deleteNote(idx) {
+  SAVED.splice(idx, 1);
+  persistSavedNotes(SAVED);
+  buildSavedList();
+}
+
+function openSavedNotes() {
+  document.querySelectorAll('.accordion-header').forEach(h => {
+    h.classList.remove('active');
+    h.nextElementSibling.classList.remove('open');
+  });
+  const h = document.getElementById('savedHeader');
+  h.classList.add('active');
+  h.nextElementSibling.classList.add('open');
+}
+
+// ============================================================
 // INIT
 // ============================================================
 buildClusterTabs();
 buildPairList();
+buildSavedList();
 updatePreview();
 </script>
 </body>
