@@ -518,6 +518,26 @@ body {
   padding: 8px 0;
 }
 .status-msg.error { color: var(--accent); }
+
+/* Draft shelf + gist sync */
+.draft-item { padding: 10px 12px; margin-bottom: 6px; font-family: 'Source Serif 4', serif; font-size: 13px; line-height: 1.5; color: var(--text-light); background: var(--bg-input); border: 1px solid transparent; border-radius: 3px; cursor: pointer; transition: all 0.15s; display: flex; align-items: flex-start; gap: 8px; }
+.draft-item:hover { border-color: var(--accent); }
+.draft-item .d-title { color: var(--accent); font-family: 'Space Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px; }
+.draft-item .d-quote { color: var(--text-muted); font-style: italic; }
+.draft-item .d-main { flex: 1; min-width: 0; cursor: pointer; }
+.draft-item .d-del { flex-shrink: 0; background: transparent; border: none; color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 5px; border-radius: 3px; }
+.draft-item .d-del:hover { background: rgba(196,75,58,0.15); color: var(--accent); }
+.draft-empty { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+.drafts-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.mini-btn { padding: 5px 9px; font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-light); border-radius: 3px; cursor: pointer; }
+.mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+.mini-btn.solid { background: var(--accent); color: #fff; border-color: var(--accent); }
+.mini-btn.link { border: none; background: transparent; color: var(--text-muted); text-decoration: underline; }
+.sync-status { font-size: 9px; color: var(--text-muted); font-style: italic; margin-left: auto; }
+.token-input { width: 100%; margin-top: 8px; padding: 8px 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; color: var(--text-light); font-family: 'Space Mono', monospace; font-size: 11px; }
+.token-input:focus { outline: none; border-color: var(--accent); }
+.sync-hint { font-size: 9px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
+.sync-hint a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -528,13 +548,30 @@ body {
     <div class="panel-header">G&I Carousel Tool</div>
     <div class="tool-switch"><a href="https://quote-carousel-tool.netlify.app/">Quote</a><a href="https://boisterous-madeleine-04547d.netlify.app/">Study</a><a href="https://chimerical-marshmallow-872f9c.netlify.app/">Carousel</a><span class="active">G/I</span><a href="https://found-clip-carousel.netlify.app/">Found</a></div>
 
-    <!-- Saved Notes -->
+    <!-- Drafts -->
     <div class="accordion-section">
-      <div class="accordion-header" id="savedHeader" onclick="toggleAccordion(this)">
-        <span>Saved Notes</span><span class="arrow">&#9654;</span>
+      <div class="accordion-header" id="draftsHeader" onclick="toggleAccordion(this)">
+        <span>Drafts</span><span class="arrow">&#9654;</span>
       </div>
       <div class="accordion-body">
-        <div class="pair-list" id="savedList"></div>
+        <div id="draftList"></div>
+        <div class="drafts-bar">
+          <button class="mini-btn" onclick="newDraft()">+ New</button>
+          <button class="mini-btn" onclick="exportDrafts()">Export</button>
+          <button class="mini-btn" onclick="document.getElementById('import-file').click()">Import</button>
+          <input type="file" id="import-file" accept=".json" style="display:none">
+          <button class="mini-btn" id="pull-btn" onclick="manualPull()" style="display:none">Refresh</button>
+          <span class="sync-status" id="sync-status">Local only</span>
+        </div>
+        <div style="margin-top:6px;"><button class="mini-btn link" onclick="toggleSync()">Sync settings</button></div>
+        <div id="sync-panel" style="display:none">
+          <input type="password" id="gh-token" class="token-input" placeholder="GitHub token (gist scope)">
+          <div class="sync-hint">Syncs your drafts to a private gist you can open from any computer. Token stored in this browser only. <a href="https://github.com/settings/tokens/new?scopes=gist&description=IPN%20GI%20Carousel%20Drafts" target="_blank" rel="noopener">Create a token &rarr;</a></div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button class="mini-btn solid" onclick="connectGitHub()">Connect</button>
+            <button class="mini-btn" id="disconnect-btn" onclick="disconnectGitHub()" style="display:none">Disconnect</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -638,7 +675,7 @@ body {
     <!-- Export Bar -->
     <div class="export-bar">
       <button class="btn btn-primary" onclick="exportAll()">Download All PNGs</button>
-      <button class="btn btn-secondary" onclick="saveNote()">Save Note</button>
+      <button class="btn btn-secondary" id="btnSaveDraft" onclick="saveCurrentDraft()">Save Draft</button>
       <button class="btn btn-secondary" onclick="copyJSON()">Copy JSON</button>
       <span id="exportStatus" class="status-msg" style="align-self:center;margin-left:8px;"></span>
     </div>
@@ -1261,85 +1298,126 @@ function copyJSON() {
 }
 
 // ============================================================
-// SAVED NOTES (full editor state, persisted in the browser)
+// DRAFT LIBRARY (local + optional GitHub gist sync)
+// Mirrors the other suite tools so drafts persist across devices.
 // ============================================================
-const SAVED_KEY = 'gi_saved_notes';
-function loadSavedNotes() {
-  try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch (e) { return []; }
-}
-function persistSavedNotes(notes) {
-  try { localStorage.setItem(SAVED_KEY, JSON.stringify(notes)); } catch (e) {}
-}
-let SAVED = loadSavedNotes();
+let currentDraftId = null;
+const DRAFTS_KEY = 'ipn_gi_drafts';
+const GH_TOKEN_KEY = 'ipn_gh_token', GIST_ID_KEY = 'ipn_gi_gist_id', GIST_FILENAME = 'ipn-gi-drafts.json';
 
-function setExportStatus(msg, isError) {
-  const el = document.getElementById('exportStatus');
-  el.textContent = msg;
-  el.className = 'status-msg' + (isError ? ' error' : '');
-}
+function getDrafts(){try{return JSON.parse(localStorage.getItem(DRAFTS_KEY))||[];}catch(e){return[];}}
+function putDrafts(arr){localStorage.setItem(DRAFTS_KEY,JSON.stringify(arr||[]));}
+function mergeById(a,b){const m=new Map();[...(a||[]),...(b||[])].forEach(d=>{if(!d||!d.id)return;const ex=m.get(d.id);if(!ex||(d.savedAt||0)>(ex.savedAt||0))m.set(d.id,d);});return [...m.values()];}
 
-function saveNote() {
-  const s = getEditorState();
-  if (!s.impostor && !s.genius && !s.mechanism) {
-    setExportStatus('Nothing to save yet — build a note first.', true);
-    return;
-  }
-  SAVED.push(s);
-  persistSavedNotes(SAVED);
-  buildSavedList();
-  openSavedNotes();
-  setExportStatus('Note saved.');
-}
-
-function buildSavedList() {
-  const c = document.getElementById('savedList');
-  c.innerHTML = '';
-  if (SAVED.length === 0) {
-    c.innerHTML = '<div class="status-msg">No saved notes yet. Build one, then hit Save Note.</div>';
-    return;
-  }
-  SAVED.forEach((n, idx) => {
-    const div = document.createElement('div');
-    div.className = 'pair-item';
-    const label = (n.impostor || n.genius || ('Field Note ' + n.noteNum)).slice(0, 64);
-    div.innerHTML = `<span class="pair-del" title="Delete">&times;</span>` +
-      `<span class="imp">No. ${String(n.noteNum).padStart(2, '0')}</span><br>` +
-      `<span class="gen">${esc(label)}</span>`;
-    div.onclick = () => loadNote(idx);
-    div.querySelector('.pair-del').onclick = (e) => { e.stopPropagation(); deleteNote(idx); };
-    c.appendChild(div);
+function draftBlurb(d){const s=(d.data&&(d.data.impostor||d.data.genius))||'';return s.replace(/\*/g,'').substring(0,80)+(s.length>80?'…':'');}
+function buildDraftShelf(){
+  const all=getDrafts().slice().sort((a,b)=>b.savedAt-a.savedAt), el=document.getElementById('draftList');
+  el.innerHTML='';
+  if(!all.length){el.innerHTML='<div class="draft-empty">No saved drafts yet. Build a note, then click Save Draft.</div>';return;}
+  all.forEach(d=>{
+    const div=document.createElement('div');div.className='draft-item';
+    div.innerHTML='<div class="d-main"><span class="d-title"></span><span class="d-quote"></span></div><button class="d-del" title="Delete draft">×</button>';
+    div.querySelector('.d-title').textContent=d.name||'(untitled)';
+    div.querySelector('.d-quote').textContent=draftBlurb(d);
+    div.querySelector('.d-main').onclick=()=>openDraft(d.id);
+    div.querySelector('.d-del').onclick=e=>{e.stopPropagation();deleteDraft(d.id);};
+    el.appendChild(div);
   });
 }
+function openDraft(id){const d=getDrafts().find(x=>x.id===id);if(!d)return;currentDraftId=id;loadData(d.data);}
+function newDraft(){currentDraftId=null;loadData({});}
+async function deleteDraft(id){
+  if(!confirm('Delete this draft? This cannot be undone.'))return;
+  const list=(await currentList()).filter(x=>x.id!==id);
+  putDrafts(list);if(currentDraftId===id)currentDraftId=null;buildDraftShelf();
+  await pushDrafts(list);
+}
+async function saveCurrentDraft(){
+  const state=getEditorState();const list=await currentList();
+  if(currentDraftId){const idx=list.findIndex(x=>x.id===currentDraftId);
+    if(idx>=0){list[idx].data=state;list[idx].savedAt=Date.now();putDrafts(list);buildDraftShelf();flashSaved('Updated');await pushDrafts(list);return;}}
+  const def=(state.impostor||state.genius||'').replace(/\*/g,'').trim().substring(0,60);
+  const name=prompt('Name this draft:',def);if(name===null)return;
+  const id='g'+Date.now()+'_'+Math.floor(Math.random()*1000);
+  list.push({id,name:(name.trim()||def||'Untitled'),savedAt:Date.now(),data:state});
+  putDrafts(list);currentDraftId=id;buildDraftShelf();flashSaved('Saved');await pushDrafts(list);
+}
+function flashSaved(msg){const b=document.getElementById('btnSaveDraft');if(!b)return;b.textContent=msg+' ✓';setTimeout(()=>{b.textContent='Save Draft';},1400);}
+function exportDrafts(){
+  const blob=new Blob([JSON.stringify(getDrafts(),null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.download='gi-carousel-drafts.json';a.href=URL.createObjectURL(blob);
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
+}
+function importDraftsFile(file){
+  const r=new FileReader();
+  r.onload=async()=>{try{
+    const incoming=JSON.parse(r.result);
+    if(!Array.isArray(incoming))throw new Error('That file is not a drafts export.');
+    const merged=mergeById(getDrafts(),incoming);putDrafts(merged);buildDraftShelf();
+    if(isConnected())await pushDrafts(merged);else setSyncStatus('Imported · '+merged.length+' local draft(s)');
+  }catch(e){alert('Import failed: '+e.message);}};
+  r.readAsText(file);
+}
+function getToken(){return localStorage.getItem(GH_TOKEN_KEY)||'';}
+function isConnected(){return !!getToken();}
+function setSyncStatus(m){const el=document.getElementById('sync-status');if(el)el.textContent=m;}
+function refreshSyncUI(){const conn=isConnected();const pb=document.getElementById('pull-btn'),db=document.getElementById('disconnect-btn');if(pb)pb.style.display=conn?'inline-block':'none';if(db)db.style.display=conn?'inline-block':'none';}
+function toggleSync(){const p=document.getElementById('sync-panel');p.style.display=p.style.display==='none'?'block':'none';}
+function ghFetch(url,opts){opts=opts||{};const h={'Authorization':'Bearer '+getToken(),'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};if(opts.body)h['Content-Type']='application/json';return fetch(url,Object.assign({},opts,{headers:h}));}
+async function ensureGistId(){
+  let id=localStorage.getItem(GIST_ID_KEY);if(id)return id;
+  const res=await ghFetch('https://api.github.com/gists?per_page=100');
+  if(!res.ok)throw new Error('GitHub auth failed ('+res.status+'). Check the token.');
+  const list=await res.json();
+  const found=Array.isArray(list)&&list.find(g=>g.files&&g.files[GIST_FILENAME]);
+  if(found){id=found.id;}
+  else{const cr=await ghFetch('https://api.github.com/gists',{method:'POST',body:JSON.stringify({description:'IPN G/I Carousel drafts',public:false,files:{[GIST_FILENAME]:{content:'[]'}}})});if(!cr.ok)throw new Error('Could not create gist ('+cr.status+').');id=(await cr.json()).id;}
+  localStorage.setItem(GIST_ID_KEY,id);return id;
+}
+async function pullArrayFromGist(){
+  if(!isConnected())throw new Error('Not connected.');
+  const id=await ensureGistId();const res=await ghFetch('https://api.github.com/gists/'+id);
+  if(!res.ok)throw new Error('Could not read gist ('+res.status+').');
+  const g=await res.json();const f=g.files&&g.files[GIST_FILENAME];
+  let arr=[];if(f&&f.content){try{arr=JSON.parse(f.content)||[];}catch(e){arr=[];}}
+  return Array.isArray(arr)?arr:[];
+}
+async function currentList(){
+  if(isConnected()){try{const arr=await pullArrayFromGist();putDrafts(arr);return arr;}catch(e){setSyncStatus('Offline — using local copy');return getDrafts();}}
+  return getDrafts();
+}
+async function pushDrafts(arr){
+  if(!isConnected())return;
+  try{setSyncStatus('Syncing…');const id=await ensureGistId();const res=await ghFetch('https://api.github.com/gists/'+id,{method:'PATCH',body:JSON.stringify({files:{[GIST_FILENAME]:{content:JSON.stringify(arr,null,2)}}})});if(!res.ok)throw new Error('status '+res.status);setSyncStatus('Synced ✓ · '+arr.length+' draft(s)');}
+  catch(e){setSyncStatus('Offline — saved locally');}
+}
+async function manualPull(){
+  if(!isConnected())return;setSyncStatus('Syncing…');
+  try{const arr=await pullArrayFromGist();putDrafts(arr);buildDraftShelf();setSyncStatus('Synced ✓ · '+arr.length+' draft(s)');}
+  catch(e){setSyncStatus('Pull failed: '+e.message);}
+}
+async function connectGitHub(){
+  const t=document.getElementById('gh-token').value.trim();
+  if(!t){setSyncStatus('Enter a token first');return;}
+  localStorage.setItem(GH_TOKEN_KEY,t);setSyncStatus('Connecting…');
+  try{const remote=await pullArrayFromGist();const merged=mergeById(getDrafts(),remote);putDrafts(merged);buildDraftShelf();await pushDrafts(merged);document.getElementById('gh-token').value='';refreshSyncUI();setSyncStatus('Synced ✓ · '+merged.length+' draft(s)');}
+  catch(e){localStorage.removeItem(GH_TOKEN_KEY);refreshSyncUI();setSyncStatus('Connection failed: '+e.message);}
+}
+function disconnectGitHub(){localStorage.removeItem(GH_TOKEN_KEY);localStorage.removeItem(GIST_ID_KEY);refreshSyncUI();setSyncStatus('Local only');}
 
-function loadNote(idx) {
-  const n = SAVED[idx];
-  if (!n) return;
-  document.getElementById('edFieldNote').value = n.noteNum;
-  document.getElementById('edImpostor').value = n.impostor || '';
-  document.getElementById('edGenius').value = n.genius || '';
-  document.getElementById('edMechanism').value = n.mechanism || '';
-  document.getElementById('edImpUnderline').value = n.impUL || '';
-  document.getElementById('edGenUnderline').value = n.genUL || '';
-  document.getElementById('edCtaStamp').value = n.ctaStamp || '';
-  document.getElementById('edCtaLine1').value = n.ctaLine1 || '';
-  document.getElementById('edCtaLine2').value = n.ctaLine2 || '';
+function loadData(d){
+  d=d||{};
+  const set=(id,v,dflt)=>{document.getElementById(id).value=(v!==undefined&&v!==null)?v:(dflt!==undefined?dflt:'');};
+  set('edFieldNote',d.noteNum,1);
+  set('edImpostor',d.impostor,'');
+  set('edGenius',d.genius,'');
+  set('edMechanism',d.mechanism,'');
+  set('edImpUnderline',d.impUL,'');
+  set('edGenUnderline',d.genUL,'');
+  set('edCtaStamp',d.ctaStamp,'Forthcoming');
+  set('edCtaLine1',d.ctaLine1,'How extraordinary minds are built from ordinary brains.');
+  set('edCtaLine2',d.ctaLine2,'Available for pre-order at GeniusAndImpostor.com');
   updatePreview();
-}
-
-function deleteNote(idx) {
-  SAVED.splice(idx, 1);
-  persistSavedNotes(SAVED);
-  buildSavedList();
-}
-
-function openSavedNotes() {
-  document.querySelectorAll('.accordion-header').forEach(h => {
-    h.classList.remove('active');
-    h.nextElementSibling.classList.remove('open');
-  });
-  const h = document.getElementById('savedHeader');
-  h.classList.add('active');
-  h.nextElementSibling.classList.add('open');
 }
 
 // ============================================================
@@ -1347,8 +1425,13 @@ function openSavedNotes() {
 // ============================================================
 buildClusterTabs();
 buildPairList();
-buildSavedList();
 updatePreview();
+buildDraftShelf();
+refreshSyncUI();
+if(isConnected()){manualPull();}else{setSyncStatus('Local only');}
+document.getElementById('import-file').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(f)importDraftsFile(f);e.target.value='';});
+const _firstDraft=getDrafts().slice().sort((a,b)=>b.savedAt-a.savedAt)[0];
+if(_firstDraft){openDraft(_firstDraft.id);}
 </script>
 </body>
 </html>
