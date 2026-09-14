@@ -470,6 +470,28 @@ body {
   text-align: center;
 }
 
+/* Swipe cue — opening slide only, signals more slides follow.
+   Kept static (no transform animation) so html2canvas exports it cleanly. */
+.swipe-cue {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55em;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.4em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  margin-bottom: 0.9em;
+  flex-shrink: 0;
+}
+.swipe-cue .swipe-arrow {
+  font-size: 1.7em;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
 /* Footer */
 .slide-footer {
   border-top: 1px dashed #999;
@@ -546,7 +568,7 @@ body {
   <!-- LEFT PANEL -->
   <div class="left-panel">
     <div class="panel-header">G&I Carousel Tool</div>
-    <div class="tool-switch"><a href="https://quote-carousel-tool.netlify.app/">Quote</a><a href="https://boisterous-madeleine-04547d.netlify.app/">Study</a><a href="https://chimerical-marshmallow-872f9c.netlify.app/">Carousel</a><span class="active">G/I</span><a href="https://found-clip-carousel.netlify.app/">Found</a></div>
+    <div class="tool-switch"><a href="https://quote-carousel-tool.netlify.app/">Quote</a><a href="https://boisterous-madeleine-04547d.netlify.app/">Study</a><a href="https://chimerical-marshmallow-872f9c.netlify.app/">Carousel</a><span class="active">G/I</span><a href="https://found-clip-carousel.netlify.app/">Found</a><a href="https://earnest-clafoutis-dccc40.netlify.app/">Plain</a></div>
 
     <!-- Drafts -->
     <div class="accordion-section">
@@ -1148,6 +1170,11 @@ function buildSlideHTML(slideNum, noteNum, impostor, genius, mechanism, impUL, g
     </div>`;
   }
 
+  // Swipe cue on the opening slide only, so viewers know more slides follow
+  const swipeCue = slideNum === 0
+    ? `<div class="swipe-cue">Swipe<span class="swipe-arrow">&rarr;</span></div>`
+    : '';
+
   // Generate lined paper — ~30 lines covers the slide
   let linesHTML = '';
   for (let ln = 1; ln <= 30; ln++) {
@@ -1164,6 +1191,7 @@ function buildSlideHTML(slideNum, noteNum, impostor, genius, mechanism, impUL, g
           <div class="stamp">${stamp}</div>
         </div>
         ${body}
+        ${swipeCue}
         <div class="slide-footer">J. Turknett, MD</div>
       </div>
     </div>
