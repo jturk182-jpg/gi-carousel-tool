@@ -1428,14 +1428,24 @@ function buildDraftShelf(){
     div.querySelector('.d-title').textContent=d.name||'(untitled)';
     div.querySelector('.d-quote').textContent=draftBlurb(d);
     div.querySelector('.d-main').onclick=()=>openDraft(d.id);
-    div.querySelector('.d-del').onclick=e=>{e.stopPropagation();deleteDraft(d.id);};
+    div.querySelector('.d-del').onclick=e=>{e.stopPropagation();armOrDeleteDraft(d.id,e.currentTarget);};
     el.appendChild(div);
   });
 }
 function openDraft(id){const d=getDrafts().find(x=>x.id===id);if(!d)return;currentDraftId=id;loadData(d.data);}
 function newDraft(){currentDraftId=null;loadData({});}
+// Two-step delete instead of confirm() — embedded browsers block modal dialogs.
+// First click on × arms the row (shows ✓?); a second click within 3s deletes it.
+let _armedDeleteId=null,_armedDeleteTimer=null;
+function armOrDeleteDraft(id,btn){
+  if(_armedDeleteId===id){clearTimeout(_armedDeleteTimer);_armedDeleteId=null;deleteDraft(id);return;}
+  _armedDeleteId=id;
+  if(btn){btn.textContent='✓?';btn.title='Click again to delete';}
+  clearTimeout(_armedDeleteTimer);
+  _armedDeleteTimer=setTimeout(()=>{_armedDeleteId=null;buildDraftShelf();},3000);
+}
 async function deleteDraft(id){
-  if(!confirm('Delete this draft? This cannot be undone.'))return;
+  _armedDeleteId=null;clearTimeout(_armedDeleteTimer);
   const list=(await currentList()).filter(x=>x.id!==id);
   putDrafts(list);if(currentDraftId===id)currentDraftId=null;buildDraftShelf();
   await pushDrafts(list);
@@ -1444,10 +1454,11 @@ async function saveCurrentDraft(){
   const state=getEditorState();const list=await currentList();
   if(currentDraftId){const idx=list.findIndex(x=>x.id===currentDraftId);
     if(idx>=0){list[idx].data=state;list[idx].savedAt=Date.now();putDrafts(list);buildDraftShelf();flashSaved('Updated');await pushDrafts(list);return;}}
+  // No prompt() — some embedded browsers block modal dialogs, which silently
+  // aborted the save. Auto-name the draft from the impostor/genius line instead.
   const def=(state.impostor||state.genius||'').replace(/\*/g,'').trim().substring(0,60);
-  const name=prompt('Name this draft:',def);if(name===null)return;
   const id='g'+Date.now()+'_'+Math.floor(Math.random()*1000);
-  list.push({id,name:(name.trim()||def||'Untitled'),savedAt:Date.now(),data:state});
+  list.push({id,name:(def||'Untitled'),savedAt:Date.now(),data:state});
   putDrafts(list);currentDraftId=id;buildDraftShelf();flashSaved('Saved');await pushDrafts(list);
 }
 function flashSaved(msg){const b=document.getElementById('btnSaveDraft');if(!b)return;b.textContent=msg+' ✓';setTimeout(()=>{b.textContent='Save Draft';},1400);}
