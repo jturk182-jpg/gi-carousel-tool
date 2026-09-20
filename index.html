@@ -251,6 +251,10 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg-panel);
+  /* The mechanism list can grow; cap the editor so it never squeezes the
+     preview out of the viewport — it scrolls instead. */
+  max-height: 55vh;
+  overflow-y: auto;
 }
 .editor-row {
   display: flex;
@@ -319,6 +323,16 @@ body {
   font-size: 11px;
   padding: 5px 10px;
 }
+/* Roughly two blocks tall, then scrolls — so adding a fifth mechanism
+   costs the preview nothing. */
+#mechList {
+  max-height: 250px;
+  overflow-y: auto;
+}
+#mechList .editor-textarea-field { min-height: 70px; }
+
+/* Keep the slide row readable no matter how short the panel gets */
+.preview-section { min-height: 220px; }
 
 /* Preview */
 .preview-section {
@@ -1442,6 +1456,10 @@ function updatePreview() {
   const s = getEditorState();
   const grid = document.getElementById('previewGrid');
   const seq = getSlideSequence(s);
+  // Widen the row to the slide count so extra mechanisms stay on one line
+  // rather than wrapping out of view. Instagram tops out at 10 slides;
+  // past 8 the row wraps rather than shrinking further.
+  grid.style.gridTemplateColumns = 'repeat(' + Math.min(Math.max(seq.length, 4), 8) + ', 1fr)';
   let html = '';
   seq.forEach((slide, i) => { html += buildSlideHTML(slide, i, s); });
   grid.innerHTML = html;
