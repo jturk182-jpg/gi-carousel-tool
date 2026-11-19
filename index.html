@@ -660,6 +660,13 @@ body {
 .token-input:focus { outline: none; border-color: var(--accent); }
 .sync-hint { font-size: 9px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
 .sync-hint a { color: var(--accent); }
+.draft-item.posted { opacity: 0.65; }
+.draft-item .d-link { display: block; margin-top: 4px; font-family: 'Space Mono', monospace; font-size: 10px; color: var(--accent); }
+
+/* Post to Instagram panel (ig-post.js). Desktop: under the slide row, inside
+   the scrolling preview. Phone: in the Post tab, under the export buttons. */
+.ig-post-wrap { padding-bottom: 8px; }
+.ig-post-wrap .igp { margin: 8px auto 0; }
 
 
 /* ====================== EDIT ON THE SLIDE ====================== */
@@ -708,6 +715,9 @@ body { display: flex; flex-direction: column; }
   .editor-row { flex-direction: column; gap: 10px; }
   .editor-field.small { flex: none; width: 100%; }
   .editor-input, .editor-textarea-field, .editor-select, .json-textarea, .token-input { font-size: 16px; }
+  .right-panel > .ig-post-wrap { order: 2; padding: 0 16px 16px; }
+  .ig-post-wrap .igp { margin-top: 12px; max-width: none; }
+  #ig-post textarea, #ig-post input { font-size: 16px; }
 }
 </style>
 </head>
@@ -820,7 +830,7 @@ body { display: flex; flex-direction: column; }
         </div>
         <div class="editor-field small" style="flex:0 0 140px;">
           <div class="editor-label">CTA Stamp</div>
-          <input type="text" class="editor-input" id="edCtaStamp" value="Forthcoming" oninput="updatePreview()">
+          <input type="text" class="editor-input" id="edCtaStamp" value="Out Now" oninput="updatePreview()">
         </div>
       </div>
       <div class="editor-row">
@@ -833,7 +843,7 @@ body { display: flex; flex-direction: column; }
       <!-- slide text: edited on the slides themselves (see startSlideEdit) -->
       <div hidden>
         <input id="edImpostor"><input id="edGenius">
-        <input id="edCtaLine1" value="How extraordinary minds are built from ordinary brains."><input id="edCtaLine2" value="Available for pre-order at GeniusAndImpostor.com">
+        <input id="edCtaLine1" value="How extraordinary minds are built from ordinary brains."><input id="edCtaLine2" value="Available now at GeniusAndImpostor.com">
       </div>
     </div>
 
@@ -849,6 +859,8 @@ body { display: flex; flex-direction: column; }
       <button class="btn btn-secondary" onclick="copyJSON()">Copy JSON</button>
       <span id="exportStatus" class="status-msg" style="align-self:center;margin-left:8px;"></span>
     </div>
+    <!-- Post to Instagram (moved under the slide row on desktop, see placeIgPanel) -->
+    <div class="ig-post-wrap" id="igPostWrap"><div id="ig-post"></div></div>
   </div>
 </div>
 
@@ -1310,6 +1322,11 @@ function loadJSON() {
     if (data.ctaStamp) document.getElementById('edCtaStamp').value = data.ctaStamp;
     if (data.ctaLine1) document.getElementById('edCtaLine1').value = data.ctaLine1;
     if (data.ctaLine2) document.getElementById('edCtaLine2').value = data.ctaLine2;
+    // Instagram caption + picture descriptions ride along; keep the current ones if the JSON has none
+    startCarousel({
+      caption: data.caption !== undefined ? data.caption : openCarousel.caption,
+      altText: data.altText !== undefined ? data.altText : openCarousel.altText
+    });
     updatePreview();
     status.textContent = 'Loaded.';
     status.className = 'status-msg';
@@ -1535,7 +1552,7 @@ function buildSlideHTML(slide, slideNum, s, edit) {
   const impUL = s.impUL, genUL = s.genUL;
   const ctaStamp = s.ctaStamp, ctaLine1 = s.ctaLine1, ctaLine2 = s.ctaLine2;
 
-  const stamps = { hook: 'Genius &amp; Impostor', reveal: 'Genius &amp; Impostor', mech: 'On the Mechanism', cta: esc(ctaStamp || 'Forthcoming') };
+  const stamps = { hook: 'Genius &amp; Impostor', reveal: 'Genius &amp; Impostor', mech: 'On the Mechanism', cta: esc(ctaStamp || 'Out Now') };
   const stamp = stamps[slide.type] || '';
 
   let body = '';
@@ -1593,6 +1610,22 @@ function getEditorState() {
     ctaLine1: document.getElementById('edCtaLine1').value,
     ctaLine2: document.getElementById('edCtaLine2').value
   };
+}
+
+// The open carousel as one object: the form fields above plus the Instagram
+// `caption` and `altText`, which aren't drawn on the slides. The form rebuilds
+// the fields on every read; caption/altText live only here, so they survive.
+// A new object means a different carousel was opened (the Post panel resets).
+let openCarousel = {};
+function startCarousel(d) {
+  openCarousel = {};
+  if (d && typeof d.caption === 'string' && d.caption) openCarousel.caption = d.caption;
+  if (d && Array.isArray(d.altText) && d.altText.some(a => a)) openCarousel.altText = d.altText.map(a => String(a || ''));
+}
+function currentCarousel() {
+  const s = getEditorState();
+  Object.keys(openCarousel).forEach(k => { if (k !== 'caption' && k !== 'altText') delete openCarousel[k]; });
+  return Object.assign(openCarousel, s);
 }
 
 function updatePreview() {
@@ -1688,6 +1721,35 @@ document.addEventListener('keydown', e => {
 // ============================================================
 // EXPORT
 // ============================================================
+// Draw one slide at full export size (1080x1350) and return the canvas.
+// Download All PNGs and Post to Instagram both use this. Wait for
+// document.fonts.ready first, and clear #exportRender when done.
+async function renderSlideCanvas(slide, i, s) {
+  const renderContainer = document.getElementById('exportRender');
+  renderContainer.innerHTML = buildSlideHTML(slide, i, s);
+
+  const wrapper = renderContainer.querySelector('.slide-wrapper');
+  // Override aspect-ratio and set fixed dimensions
+  wrapper.style.cssText = 'width:1080px;height:1350px;aspect-ratio:auto;border-radius:0;overflow:hidden;position:relative;box-shadow:none;cursor:default;';
+
+  const slideEl = wrapper.querySelector('.slide');
+  // Base font for 1080px wide. Preview is ~250px, so scale ~4.3x from default
+  slideEl.style.fontSize = '48px';
+
+  // Let layout settle
+  await new Promise(r => setTimeout(r, 200));
+
+  return html2canvas(wrapper, {
+    width: 1080,
+    height: 1350,
+    scale: 1,
+    useCORS: true,
+    backgroundColor: '#f1ebde',
+    logging: false,
+    allowTaint: true
+  });
+}
+
 async function exportAll() {
   const statusEl = document.getElementById('exportStatus');
   statusEl.innerHTML = '<span class="spinner"></span> Rendering...';
@@ -1703,29 +1765,8 @@ async function exportAll() {
   for (let i = 0; i < seq.length; i++) {
     statusEl.innerHTML = `<span class="spinner"></span> Rendering slide ${i + 1} of ${seq.length}...`;
 
-    renderContainer.innerHTML = buildSlideHTML(seq[i], i, s);
-
-    const wrapper = renderContainer.querySelector('.slide-wrapper');
-    // Override aspect-ratio and set fixed dimensions
-    wrapper.style.cssText = 'width:1080px;height:1350px;aspect-ratio:auto;border-radius:0;overflow:hidden;position:relative;box-shadow:none;cursor:default;';
-
-    const slide = wrapper.querySelector('.slide');
-    // Base font for 1080px wide. Preview is ~250px, so scale ~4.3x from default
-    slide.style.fontSize = '48px';
-
-    // Let layout settle
-    await new Promise(r => setTimeout(r, 200));
-
     try {
-      const canvas = await html2canvas(wrapper, {
-        width: 1080,
-        height: 1350,
-        scale: 1,
-        useCORS: true,
-        backgroundColor: '#f1ebde',
-        logging: false,
-        allowTaint: true
-      });
+      const canvas = await renderSlideCanvas(seq[i], i, s);
 
       // Convert to blob and store
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -1776,6 +1817,8 @@ function copyJSON() {
     ctaLine1: s.ctaLine1,
     ctaLine2: s.ctaLine2
   };
+  if (openCarousel.caption) data.caption = openCarousel.caption;
+  if (openCarousel.altText) data.altText = openCarousel.altText;
   navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
     document.getElementById('exportStatus').textContent = 'JSON copied.';
   }).catch(() => {
@@ -1803,15 +1846,22 @@ function putDrafts(arr){localStorage.setItem(DRAFTS_KEY,JSON.stringify(arr||[]))
 function mergeById(a,b){const m=new Map();[...(a||[]),...(b||[])].forEach(d=>{if(!d||!d.id)return;const ex=m.get(d.id);if(!ex||(d.savedAt||0)>(ex.savedAt||0))m.set(d.id,d);});return [...m.values()];}
 
 function draftBlurb(d){const s=(d.data&&(d.data.impostor||d.data.genius))||'';return s.replace(/\*/g,'').substring(0,80)+(s.length>80?'…':'');}
+function isPosted(d){return d.status==='posted';}
 function buildDraftShelf(){
-  const all=getDrafts().slice().sort((a,b)=>b.savedAt-a.savedAt), el=document.getElementById('draftList');
+  // Unposted drafts first (newest saved on top), then posted ones (newest posted on top)
+  const all=getDrafts().slice().sort((a,b)=>(isPosted(a)-isPosted(b))||(isPosted(a)?(b.postedAt||0)-(a.postedAt||0):b.savedAt-a.savedAt)), el=document.getElementById('draftList');
   el.innerHTML='';
   if(!all.length){el.innerHTML='<div class="draft-empty">No saved drafts yet. Build a note, then click Save Draft.</div>';return;}
   all.forEach(d=>{
-    const div=document.createElement('div');div.className='draft-item';
+    const posted=isPosted(d);
+    const div=document.createElement('div');div.className='draft-item'+(posted?' posted':'');
     div.innerHTML='<div class="d-main"><span class="d-title"></span><span class="d-quote"></span></div><button class="d-del" title="Delete draft">×</button>';
-    div.querySelector('.d-title').textContent=d.name||'(untitled)';
+    // Queued / didn't post (from the Post to Instagram panel), or the posted date
+    const badge=!posted&&window.igPost&&window.igPost.badge(d.id);
+    const when=posted?' · Posted '+new Date(d.postedAt||d.savedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}):(badge?' · '+badge.text:'');
+    div.querySelector('.d-title').textContent=(d.name||'(untitled)')+when;
     div.querySelector('.d-quote').textContent=draftBlurb(d);
+    if(posted&&d.permalink){const a=document.createElement('a');a.className='d-link';a.href=d.permalink;a.target='_blank';a.rel='noopener';a.textContent='Open the post';a.onclick=e=>e.stopPropagation();div.querySelector('.d-main').appendChild(a);}
     div.querySelector('.d-main').onclick=()=>openDraft(d.id);
     div.querySelector('.d-del').onclick=e=>{e.stopPropagation();armOrDeleteDraft(d.id,e.currentTarget);};
     el.appendChild(div);
@@ -1836,7 +1886,7 @@ async function deleteDraft(id){
   await pushDrafts(list);
 }
 async function saveCurrentDraft(){
-  const state=getEditorState();const list=await currentList();
+  const state=JSON.parse(JSON.stringify(currentCarousel()));const list=await currentList();
   if(currentDraftId){const idx=list.findIndex(x=>x.id===currentDraftId);
     if(idx>=0){list[idx].data=state;list[idx].savedAt=Date.now();putDrafts(list);buildDraftShelf();flashSaved('Updated');await pushDrafts(list);return;}}
   // No prompt() — some embedded browsers block modal dialogs, which silently
@@ -1911,6 +1961,7 @@ function disconnectGitHub(){localStorage.removeItem(GH_TOKEN_KEY);localStorage.r
 
 function loadData(d){
   d=d||{};
+  startCarousel(d);
   const set=(id,v,dflt)=>{document.getElementById(id).value=(v!==undefined&&v!==null)?v:(dflt!==undefined?dflt:'');};
   set('edFieldNote',d.noteNum,1);
   set('edImpostor',d.impostor,'');
@@ -1918,9 +1969,9 @@ function loadData(d){
   setMechanisms(d.mechanisms !== undefined ? d.mechanisms : d.mechanism);
   set('edImpUnderline',d.impUL,'');
   set('edGenUnderline',d.genUL,'');
-  set('edCtaStamp',d.ctaStamp,'Forthcoming');
+  set('edCtaStamp',d.ctaStamp,'Out Now');
   set('edCtaLine1',d.ctaLine1,'How extraordinary minds are built from ordinary brains.');
-  set('edCtaLine2',d.ctaLine2,'Available for pre-order at GeniusAndImpostor.com');
+  set('edCtaLine2',d.ctaLine2,'Available now at GeniusAndImpostor.com');
   updatePreview();
 }
 
@@ -1935,7 +1986,8 @@ buildDraftShelf();
 refreshSyncUI();
 if(isConnected()){manualPull();}else{setSyncStatus('Local only');}
 document.getElementById('import-file').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(f)importDraftsFile(f);e.target.value='';});
-const _firstDraft=getDrafts().slice().sort((a,b)=>b.savedAt-a.savedAt)[0];
+const _byNewest=getDrafts().slice().sort((a,b)=>b.savedAt-a.savedAt);
+const _firstDraft=_byNewest.find(d=>!isPosted(d))||_byNewest[0];
 if(_firstDraft){openDraft(_firstDraft.id);}
 </script>
 <script>
@@ -1964,6 +2016,71 @@ if(_firstDraft){openDraft(_firstDraft.id);}
   });
   setView('drafts');
 })();
+</script>
+<script>
+// ============ POST TO INSTAGRAM ============
+// "Ready to post" comes from the shared publisher module (ig-publisher/ in
+// claude-central, live at jt-ig-publisher.netlify.app): it renders these slides
+// as JPEGs, queues them with the caption, and the publisher posts them to
+// @brainjojosh at the set time. Caption and screen-reader descriptions are
+// saved with the draft (`caption`, `altText`). On localhost,
+// ?publisher=http://localhost:8888 points at a local publisher for testing.
+var igPost = null;
+(function () {
+  // Desktop: under the slide row, scrolling with it. Phone: Post tab, under the export buttons.
+  var mq = window.matchMedia('(max-width: 860px)');
+  function placeIgPanel() {
+    var wrap = document.getElementById('igPostWrap'), bar = document.querySelector('.export-bar');
+    if (mq.matches) bar.parentNode.insertBefore(wrap, bar.nextSibling);
+    else document.getElementById('previewSection').appendChild(wrap);
+  }
+  placeIgPanel();
+  if (mq.addEventListener) mq.addEventListener('change', placeIgPanel); else mq.addListener(placeIgPanel);
+
+  var base = 'https://jt-ig-publisher.netlify.app';
+  var local = (location.search.match(/[?&]publisher=(http:\/\/(?:localhost|127\.0\.0\.1):\d+)/) || [])[1];
+  if (local && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) base = local;
+  var s = document.createElement('script');
+  s.src = base + '/ig-post.js';
+  s.onload = function () {
+    igPost = IGPost.mount({
+      el: document.getElementById('ig-post'), tool: 'gi', account: 'ipn', handle: '@brainjojosh',
+      theme: { accent: '#c44b3a', onAccent: '#ffffff', bg: '#2a2a2a', input: '#333333', border: '#444444', text: '#e0e0e0', muted: '#999999' },
+      token: getToken,
+      draft: function () {
+        var data = currentCarousel();
+        var saved = currentDraftId && getDrafts().find(function (x) { return x.id === currentDraftId; });
+        return { id: saved ? currentDraftId : null, name: saved ? saved.name : '', data: data, slideCount: getSlideSequence(data).length,
+                 permalink: saved && saved.permalink, postedAt: saved && saved.postedAt };
+      },
+      save: async function () { await saveCurrentDraft(); return currentDraftId; },
+      // Same drawing as Download All PNGs: 1080x1350 per slide
+      renderSlides: async function () {
+        var st = getEditorState(), seq = getSlideSequence(st), out = [];
+        await document.fonts.ready;
+        try { for (var i = 0; i < seq.length; i++) out.push(await renderSlideCanvas(seq[i], i, st)); }
+        finally { document.getElementById('exportRender').innerHTML = ''; }
+        return out;
+      },
+      onPosted: postedFromInstagram,
+      onStatus: buildDraftShelf
+    });
+    buildDraftShelf();
+  };
+  document.body.appendChild(s);
+  // Every change to the open carousel redraws the preview, so this is where
+  // edits get noticed (an edited carousel comes back out of the queue).
+  var redraw = updatePreview;
+  updatePreview = function () { redraw(); if (igPost) igPost.changed(); };
+})();
+// The publisher posted it: mark the draft Posted with the real time and link.
+async function postedFromInstagram(id, info) {
+  var list = await currentList(); var it = list.find(function (x) { return x.id === id; }); if (!it) return;
+  if (it.status === 'posted' && it.permalink) return;
+  it.status = 'posted'; it.postedAt = info.postedAt || Date.now(); it.savedAt = Date.now();
+  it.permalink = info.permalink || ''; it.igMediaId = info.mediaId || ''; if (!it.metrics) it.metrics = {};
+  putDrafts(list); buildDraftShelf(); await pushDrafts(list);
+}
 </script>
 </body>
 </html>
